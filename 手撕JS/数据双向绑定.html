@@ -1,0 +1,167 @@
+<body>
+  <div id="app">
+    <input type="text" v-model="message" />
+    {{message}}
+  </div>
+
+  <script src="./node_modules/vue/dist/vue.js"></script>
+  <script>
+    class Vue {
+      constructor(options) {
+        // 1.保存数据
+        this.$el = options.el;
+        this.$data = options.data;
+        this.$options = options;
+
+        // 2.将data添加到响应式系统中
+        // 数据监听
+        new Observer(this.$data);
+
+        // 3.代理this.$data数据
+        // 重新设置 set get 函数
+        Object.keys(this.$data).forEach((key) => {
+          this._proxy(key);
+        });
+
+        // 4.处理el
+        // 绑定数据， 绑定更新函数
+        new Compiler(this.$el, this);
+      }
+
+      // 将this.$data代理到vue实例的this中
+      _proxy(key) {
+        Object.defineProperty(this, key, {
+          configurable: true,
+          enumberable: true,
+          set(newValue) {
+            this.$data[key] = newValue;
+          },
+          get() {
+            return this.$data[key];
+          },
+        });
+      }
+    }
+
+    class Observer {
+      constructor(data) {
+        this.data = data;
+
+        Object.keys(data).forEach((key) => {
+          // 对每个数据进行响应式处理
+          this.defineReactive(this.data, key, data[key]);
+        });
+      }
+
+      defineReactive(data, key, val) {
+        // 一个属性key -> 一个Dep对象
+        // Observer -> Dep 进行数据监听
+        const dep = new Dep();
+        Object.defineProperty(data, key, {
+          configurable: true,
+          enumberable: true,
+          get() {
+            // 由于需要在闭包内添加watcher，
+            // 所以通过Dep定义一个全局target属性，暂存watcher, 添加完移除
+            if (Dep.target) {
+              dep.addSub(Dep.target);
+            }
+            return val;
+          },
+          // 数据更新
+          set(newValue) {
+            if (newValue === val) return;
+            val = newValue;
+            // 执行更新函数
+            dep.notyfy();
+          },
+        });
+      }
+    }
+
+    class Dep {
+      constructor() {
+        this.subs = [];
+      }
+
+      addSub(sub) {
+        this.subs.push(sub);
+      }
+
+      notyfy() {
+        this.subs.forEach((sub) => {
+          sub.update();
+        });
+      }
+    }
+
+    class Watcher {
+      constructor(node, name, vm) {
+        this.node = node;
+        this.name = name;
+        this.vm = vm;
+        // 收集依赖, 因为触发 definePropreity 的 get()
+        Dep.target = this;
+        this.update();
+        Dep.target = null;
+      }
+
+      update() {
+        this.node.nodeValue = this.vm[this.name];
+      }
+    }
+
+    const reg = /\{\{(.+)\}\}/;
+
+    class Compiler {
+      constructor(el, vm) {
+        this.el = document.querySelector(el);
+        this.vm = vm;
+
+        this.frag = this._createFragment();
+        this.el.appendChild(this.frag);
+      }
+
+      _createFragment() {
+        const frag = document.createDocumentFragment();
+
+        let child;
+        while ((child = this.el.firstChild)) {
+          // 更改 this.vm[name]
+          this._compile(child);
+          frag.appendChild(child);
+        }
+
+        return frag;
+      }
+
+      _compile(node) {
+        if (node.nodeType === 1) {
+          // 标签节点
+          const attrs = node.attributes;
+          if (attrs.hasOwnProperty("v-model")) {
+            const name = attrs["v-model"].nodeValue;
+            node.addEventListener("input", (e) => {
+              this.vm[name] = e.target.value;
+            });
+          }
+        }
+        if (node.nodeType === 3) {
+          // 文本节点
+          if (reg.test(node.nodeValue)) {
+            const name = RegExp.$1.trim();
+            // 处理文本节点
+            new Watcher(node, name, this.vm);
+          }
+        }
+      }
+    }
+
+    const app = new Vue({
+      el: "#app",
+      data: {
+        message: "hahaha",
+      },
+    });
+  </script>
+</body>
